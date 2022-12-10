@@ -1,0 +1,51 @@
+
+if ((Get-PSSnapin "Get-PSSnapin Citrix.Broker.Admin.*" -EA silentlycontinue) -eq $null) {
+try { Add-PSSnapin Citrix.Broker.Admin.* -ErrorAction Stop }
+catch { write-error "Error Get-PSSnapin Citrix.Broker.Admin.* Powershell snapin"; Return }
+}
+$g = "<style>"
+$g = $g + "BODY"#{background-color:green;}"
+$g = $g + "TABLE{border-width: 4px;border-style: solid;border-color: #808000;}" #border-collapse: collapse;}"
+$g = $g + "TH{border-width: 4px;padding: 0px;border-style: solid;border-color: #808000;background-color:#808000}"
+$g = $g + "TD{border-width: 4px;padding: 0px;border-style: solid;border-color: #fcf3cf;background-color:#fcf3cf}"
+$g = $g + "</style>"
+#####################################################################################################
+$deliverygroupnames = Get-BrokerDesktopGroup | select -ExpandProperty name
+$outfilepath = "C:\PowershellScripts\DGSession-Client"
+#####################################################################################################
+# E-mail report details
+$location = "KEC-XD7.15"
+$emailFrom = "nutanix@kecrpg.com"
+$emailTo   = "L3_Support@anuntatech.com","SR_Support_Manager@anuntatech.com","IMdaas@anuntatech.com","automation.support@anuntatech.com","SR_VDISupport@anuntatech.com"
+$cc =  #"automation.support@anuntatech.com","kalpesh.padhiyar@anuntatech.com","sarath.pillai@anuntatech.com","ronak.shah@anuntatech.com"
+$smtpServer    = "10.10.11.163"
+#$emailto1 = "lakshmikanthp@anuntatech.com"
+$smtpServerPort = "25"
+$emailSubject = (" $location - DG Wise Active Session Report - " + (Get-Date -format R))
+#====================================================
+$res = @()
+foreach($deliverygroupname in $deliverygroupnames){
+$temp = ""|select DGName,ActiveSessions,TotalVMs,Registered
+#$vm = Get-BrokerDesktop -MaxRecordCount 1000 -DesktopGroupName $deliverygroupname | select machinename,registrationstate
+$Assigments = get-brokersession -MaxRecordCount 10000 | ?{ $_.DesktopGroupName -eq $deliverygroupname -and $_.SessionState -eq "Active" }  
+$temp.DGName = $deliverygroupname
+$temp.ActiveSessions = $Assigments.count
+$temp.TotalVMs=(Get-BrokerDesktop -MaxRecordCount 1000 -DesktopGroupName $deliverygroupname).count
+$temp.Registered=(Get-BrokerDesktop -MaxRecordCount 1000 -DesktopGroupName $deliverygroupname | ?{$_.RegistrationState -eq "registered"}).count
+$res+= $temp
+}
+$outfile = "$outfilepath\DGWiseReport-" + (Get-Date -Format dd-MM-yyyy_hh-mm ) +".htm"
+$res| ConvertTo-Html -body $g -Head "<h2> $emailSubject </h2>"  | out-file $outfile
+#$body = Get-Content $outfile | Out-String
+
+#==========================================================================
+$outtxt = "$outfilepath\DGWiseReport-" + (Get-Date -Format dd-MM-yyyy_hh-mm ) +".txt"
+$sessions = get-brokersession -MaxRecordCount 10000 | ?{$_.SessionState -eq "Active"} | select username
+$sessions| Out-File $outtxt
+$sessioncount = $sessions.count
+$sessioncount| ConvertTo-Html -body $g -Head "<h2> Total Active Sessions : $sessioncount </h2>"  | out-file $outfile -Append
+
+##==========================================================================================
+$body = Get-Content $outfile | Out-String
+#Send-MailMessage -From $emailFrom -To $emailTo -cc $cc -bcc $emailto1 -Subject $emailSubject -SmtpServer $smtpServer  -BodyAsHtml $body  #-Credential $credentials-Attachments $outfile,$outtxt
+Send-MailMessage -From $emailFrom -To $emailTo -Subject $emailSubject -SmtpServer $smtpServer  -BodyAsHtml $body
